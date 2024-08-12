@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <batman/wlrdisplay.h>
+#include "virtkey.h"
 
 volatile sig_atomic_t g_quit = 0;
 
@@ -12,6 +13,63 @@ typedef struct {
     GMainLoop *main_loop;
     gboolean previous_screen_on;
 } WakeGestureApp;
+
+void
+send_wake_key()
+{
+    struct wtype wtype;
+    memset(&wtype, 0, sizeof(wtype));
+
+    wtype.commands = calloc(1, sizeof(wtype.commands[0]));
+    wtype.command_count = 1;
+
+    struct wtype_command *cmd = &wtype.commands[0];
+    cmd->type = WTYPE_COMMAND_TEXT;
+    xkb_keysym_t ks = xkb_keysym_from_name("Escape", XKB_KEYSYM_CASE_INSENSITIVE);
+    if (ks == XKB_KEY_NoSymbol) {
+        g_print("Unknown key 'Escape'");
+        return;
+    }
+    cmd->key_codes = malloc(sizeof(cmd->key_codes[0]));
+    cmd->key_codes_len = 1;
+    cmd->key_codes[0] = get_key_code_by_xkb(&wtype, ks);
+    cmd->delay_ms = 0;
+
+    wtype.display = wl_display_connect(NULL);
+    if (wtype.display == NULL) {
+        g_print("Wayland connection failed\n");
+        return;
+    }
+    wtype.registry = wl_display_get_registry(wtype.display);
+    wl_registry_add_listener(wtype.registry, &registry_listener, &wtype);
+    wl_display_dispatch(wtype.display);
+    wl_display_roundtrip(wtype.display);
+
+    if (wtype.manager == NULL) {
+        g_print("Compositor does not support the virtual keyboard protocol\n");
+        return;
+    }
+    if (wtype.seat == NULL) {
+        g_print("No seat found\n");
+        return;
+    }
+
+    wtype.keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
+        wtype.manager, wtype.seat
+    );
+
+    upload_keymap(&wtype);
+    run_commands(&wtype);
+
+    g_print("Tab key sent to seat\n");
+
+    free(wtype.commands);
+    free(wtype.keymap);
+    zwp_virtual_keyboard_v1_destroy(wtype.keyboard);
+    zwp_virtual_keyboard_manager_v1_destroy(wtype.manager);
+    wl_registry_destroy(wtype.registry);
+    wl_display_disconnect(wtype.display);
+}
 
 gint32
 request_sensor(WakeGestureApp *app)
@@ -220,6 +278,8 @@ poll_sensor(gpointer user_data)
             g_main_loop_quit(app->main_loop);
             return G_SOURCE_REMOVE;
         }
+
+        send_wake_key();
     }
 
     return G_SOURCE_CONTINUE;
