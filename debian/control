@@ -1,0 +1,17 @@
+Source: gesture-sensors
+Maintainer: Bardia Moshiri <bardia@furilabs.com>
+Section: misc
+Priority: optional
+Build-Depends: debhelper-compat (= 13),
+               libglib2.0-dev,
+               gcc,
+               libbatman-wrappers,
+               libxkbcommon-dev,
+Standards-Version: 4.5.1
+Vcs-Browser: https://github.com/furilabs/gesture-sensors
+Vcs-Git: https://github.com/furilabs/gesture-sensors.git
+
+Package: gesture-sensors
+Architecture: any
+Depends: ${misc:Depends}
+Description: Daemon managing gestures through sensors such as wake and tilt
