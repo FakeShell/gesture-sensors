@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024 Jesus Higueras <jesus@furilabs.com>
+// Copyright (C) 2024 Bardia Moshiri <bardia@furilabs.com>
+
 #include <glib.h>
 #include <gio/gio.h>
 #include <stdio.h>
@@ -61,7 +65,7 @@ send_wake_key()
     upload_keymap(&wtype);
     run_commands(&wtype);
 
-    g_print("Tab key sent to seat\n");
+    g_print("Escape key sent to seat\n");
 
     free(wtype.commands);
     free(wtype.keymap);
