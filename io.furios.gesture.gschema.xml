@@ -1,12 +1,12 @@
 <schemalist>
   <schema id="io.furios.gesture" path="/io/furios/gesture/">
     <key name="wake-sensor-enabled" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Enable wake sensor</summary>
       <description>Whether the wake gesture sensor should wake the device up</description>
     </key>
     <key name="tilt-sensor-enabled" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Enable tilt sensor</summary>
       <description>Whether the tilt sensor should wake the device up</description>
     </key>
