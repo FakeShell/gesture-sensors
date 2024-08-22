@@ -1,0 +1,8 @@
+[Unit]
+Description=Gesture sensors service
+After=sm.puri.Phosh.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/gesture-sensors
+Restart=on-failure

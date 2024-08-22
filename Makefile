@@ -24,6 +24,8 @@ install: install-binary install-schema compile-schema
 install-binary:
 	install -d $(DESTDIR)$(PREFIX)/libexec
 	install -m 755 $(TARGET) $(DESTDIR)$(PREFIX)/libexec/
+	install -d $(DESTDIR)$(PREFIX)/lib/systemd/user
+	install -m 0644 gesture-sensors.service $(DESTDIR)$(PREFIX)/lib/systemd/user
 
 install-schema:
 	install -d $(DESTDIR)$(SCHEMADIR)
