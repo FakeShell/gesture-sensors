@@ -14,5 +14,6 @@ Vcs-Git: https://github.com/furilabs/gesture-sensors.git
 
 Package: gesture-sensors
 Architecture: any
-Depends: ${misc:Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends},
+         libbatman-wrappers,
 Description: Daemon managing gestures through sensors such as wake and tilt
