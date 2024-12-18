@@ -15,8 +15,6 @@
 #endif
 #define G_LOG_DOMAIN "GestureSensors"
 
-volatile sig_atomic_t g_quit = 0;
-
 typedef struct {
     GDBusConnection *dbus_connection;
     gint32 wake_session_id;
@@ -25,6 +23,8 @@ typedef struct {
     gboolean previous_screen_on;
     GSettings *settings;
 } GestureSensors;
+
+static GestureSensors *g_app = NULL;
 
 void
 send_wake_key()
@@ -466,8 +466,13 @@ poll_sensors(gpointer user_data)
 static void
 signal_handler(int signum)
 {
-    g_debug("Caught signal %d, exiting...", signum);
-    g_quit = 1;
+    if (!g_app)
+        return;
+
+    g_debug("Caught signal %d, cleaning up and exiting...", signum);
+
+    if (g_app->main_loop)
+        g_main_loop_quit(g_app->main_loop);
 }
 
 static void
@@ -487,25 +492,25 @@ cleanup_and_exit(GestureSensors *app)
     }
 }
 
-static gboolean
-check_quit_flag(gpointer user_data)
-{
-    GestureSensors *app = (GestureSensors *)user_data;
-    if (g_quit) {
-        g_main_loop_quit(app->main_loop);
-        return G_SOURCE_REMOVE;
-    }
-    return G_SOURCE_CONTINUE;
-}
-
 int
 main(int argc, char *argv[])
 {
     GestureSensors app = {0};
     GError *error = NULL;
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    g_app = &app;
+
+    struct sigaction sa = {
+        .sa_handler = signal_handler,
+        .sa_flags = SA_RESTART,
+    };
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGINT, &sa, NULL) == -1 ||
+        sigaction(SIGTERM, &sa, NULL) == -1) {
+        g_printerr("Failed to set up signal handlers\n");
+        return 1;
+    }
 
     app.dbus_connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
     if (!app.dbus_connection) {
@@ -532,11 +537,12 @@ main(int argc, char *argv[])
     app.main_loop = g_main_loop_new(NULL, FALSE);
 
     g_timeout_add(500, poll_sensors, &app);
-    g_timeout_add(500, check_quit_flag, &app);
 
     g_main_loop_run(app.main_loop);
 
     cleanup_and_exit(&app);
+
+    g_app = NULL;
 
     return 0;
 }
