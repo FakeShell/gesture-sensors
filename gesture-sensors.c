@@ -9,11 +9,16 @@
 #include <batman/wlrdisplay.h>
 #include "virtkey.h"
 #include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #ifdef G_LOG_DOMAIN
 #undef G_LOG_DOMAIN
 #endif
 #define G_LOG_DOMAIN "GestureSensors"
+
+#define PALM_REJECTION_PATH "/sys/kernel/furilabs/palmrejectionmode/common_node/palmrejectionmode"
+#define GLOVE_MODE_PATH "/sys/kernel/prize/glovemode/common_node/glovemode"
 
 typedef struct {
     GDBusConnection *dbus_connection;
@@ -28,6 +33,42 @@ typedef struct {
 } GestureSensors;
 
 static GestureSensors *g_app = NULL;
+
+void
+write_to_file(const char *path,
+              const char *value)
+{
+  g_debug("Attempting to write to %s: %s\n", path, value);
+
+  int fd = open(path, O_WRONLY);
+  if (fd == -1) {
+    perror("open");
+    return;
+  }
+
+  if (write(fd, value, strlen(value)) == -1)
+    perror("write");
+
+  close(fd);
+}
+
+char *
+read_from_file(const char *path)
+{
+  FILE *file = fopen(path, "r");
+  if (!file)
+    return NULL;
+
+  char buffer[256];
+  if (!fgets(buffer, sizeof(buffer), file)) {
+    fclose(file);
+    return NULL;
+  }
+
+  fclose(file);
+  buffer[strcspn (buffer, "\n")] = '\0';
+  return strdup(buffer);
+}
 
 void
 send_wake_key()
@@ -594,6 +635,52 @@ subscribe_to_idle_hint(GestureSensors *app)
 }
 
 static void
+on_palm_rejection_changed(GSettings *settings,
+                          const gchar *key,
+                          gpointer user_data)
+{
+    gboolean enabled = g_settings_get_boolean(settings, "palm-rejection-enabled");
+    g_debug("Palm rejection %s", enabled ? "enabled" : "disabled");
+    write_to_file(PALM_REJECTION_PATH, enabled ? "1" : "0");
+}
+
+static void
+on_glove_mode_changed(GSettings *settings,
+                      const gchar *key,
+                       gpointer user_data)
+{
+    gboolean enabled = g_settings_get_boolean(settings, "glove-mode-enabled");
+    g_debug("Glove mode %s", enabled ? "enabled" : "disabled");
+    write_to_file(GLOVE_MODE_PATH, enabled ? "1" : "0");
+}
+
+static void
+init_gsettings(GestureSensors *app)
+{
+    gboolean palm_supported = (access(PALM_REJECTION_PATH, F_OK) == 0);
+    g_settings_set_boolean(app->settings, "palm-rejection-supported", palm_supported);
+    g_debug("Palm rejection %s", palm_supported ? "is supported" : "is not supported");
+
+    gboolean glove_supported = (access(GLOVE_MODE_PATH, F_OK) == 0);
+    g_settings_set_boolean(app->settings, "glove-mode-supported", glove_supported);
+    g_debug("Glove mode %s", glove_supported ? "is supported" : "is not supported");
+
+    if (palm_supported) {
+        gboolean palm_rejection = g_settings_get_boolean(app->settings, "palm-rejection-enabled");
+        write_to_file(PALM_REJECTION_PATH, palm_rejection ? "1" : "0");
+        g_signal_connect(app->settings, "changed::palm-rejection-enabled",
+                         G_CALLBACK(on_palm_rejection_changed), NULL);
+    }
+
+    if (glove_supported) {
+        gboolean glove_mode = g_settings_get_boolean(app->settings, "glove-mode-enabled");
+        write_to_file(GLOVE_MODE_PATH, glove_mode ? "1" : "0");
+        g_signal_connect(app->settings, "changed::glove-mode-enabled",
+                         G_CALLBACK(on_glove_mode_changed), NULL);
+    }
+}
+
+static void
 cleanup_and_exit(GestureSensors *app)
 {
     if (app->idle_source_id > 0) {
@@ -663,6 +750,8 @@ main(int argc, char *argv[])
         cleanup_and_exit(&app);
         return 1;
     }
+
+    init_gsettings(&app);
 
     app.wake_session_id = request_wake_sensor(&app);
     app.tilt_session_id = request_tilt_sensor(&app);

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="io.furios.gesture" path="/io/furios/gesture/">
     <key name="wake-sensor-enabled" type="b">
@@ -9,6 +10,26 @@
       <default>false</default>
       <summary>Enable tilt sensor</summary>
       <description>Whether the tilt sensor should wake the device up</description>
+    </key>
+    <key name="palm-rejection-enabled" type="b">
+      <default>false</default>
+      <summary>Enable palm rejection</summary>
+      <description>Whether palm rejection should be enabled</description>
+    </key>
+    <key name="glove-mode-enabled" type="b">
+      <default>false</default>
+      <summary>Enable glove mode</summary>
+      <description>Whether glove mode should be enabled</description>
+    </key>
+    <key name="palm-rejection-supported" type="b">
+      <default>false</default>
+      <summary>Palm rejection supported</summary>
+      <description>Whether palm rejection is supported on this device</description>
+    </key>
+    <key name="glove-mode-supported" type="b">
+      <default>false</default>
+      <summary>Glove mode supported</summary>
+      <description>Whether glove mode is supported on this device</description>
     </key>
   </schema>
 </schemalist>
