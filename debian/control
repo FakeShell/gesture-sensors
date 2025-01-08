@@ -5,9 +5,9 @@ Priority: optional
 Build-Depends: debhelper-compat (= 13),
                libglib2.0-dev,
                gcc,
-               libbatman-wrappers,
+               libbatman-wrappers (>= 33),
                libxkbcommon-dev,
-               batman-dev,
+               batman-dev (>= 33),
 Standards-Version: 4.5.1
 Vcs-Browser: https://github.com/furilabs/gesture-sensors
 Vcs-Git: https://github.com/furilabs/gesture-sensors.git
@@ -15,5 +15,5 @@ Vcs-Git: https://github.com/furilabs/gesture-sensors.git
 Package: gesture-sensors
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends},
-         libbatman-wrappers,
+         libbatman-wrappers (>= 33),
 Description: Daemon managing gestures through sensors such as wake and tilt
