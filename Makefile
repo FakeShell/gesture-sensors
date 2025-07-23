@@ -19,7 +19,7 @@ $(TARGET): $(SRC)
 clean:
 	rm -f $(TARGET)
 
-install: install-binary install-schema compile-schema
+install: $(TARGET) install-binary install-schema compile-schema
 
 install-binary:
 	install -d $(DESTDIR)$(PREFIX)/libexec
