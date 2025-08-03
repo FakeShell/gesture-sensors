@@ -15,13 +15,15 @@ void handle_wl_event(void *data, struct wl_registry *registry,
 {
     struct wtype *wtype = data;
     if (!strcmp(interface, wl_seat_interface.name)) {
-        wtype->seat = wl_registry_bind(
-            registry, name, &wl_seat_interface, version <= 7 ? version : 7
-        );
+        if (!wtype->seat)
+            wtype->seat = wl_registry_bind(
+                registry, name, &wl_seat_interface, version <= 7 ? version : 7
+            );
     } else if (!strcmp(interface, zwp_virtual_keyboard_manager_v1_interface.name)) {
-        wtype->manager = wl_registry_bind(
-            registry, name, &zwp_virtual_keyboard_manager_v1_interface, 1
-        );
+        if (!wtype->manager)
+            wtype->manager = wl_registry_bind(
+                registry, name, &zwp_virtual_keyboard_manager_v1_interface, 1
+            );
     }
 }
 
