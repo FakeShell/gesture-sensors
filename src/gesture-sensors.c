@@ -456,13 +456,14 @@ get_session_id(GestureSensors *app)
 
     GVariantIter *iter;
     gchar *id, *seat, *path;
+    guint32 user_id;
+    gchar *service;
 
     g_variant_get(result, "(a(susso))", &iter);
-    while (g_variant_iter_loop(iter, "(susso)", &id, NULL, NULL, &seat, &path)) {
-        if (g_strcmp0(seat, "seat0") == 0) {
+
+    while (g_variant_iter_loop(iter, "(susso)", &id, &user_id, &service, &seat, &path)) {
+        if (g_strcmp0(seat, "seat0") == 0 && !session_id)
             session_id = g_strdup(id);
-            break;
-        }
     }
 
     g_variant_iter_free(iter);
