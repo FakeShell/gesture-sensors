@@ -1,6 +1,8 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2019 Josef Gajdusek
-// Copyright (C) 2023 Bardia Moshiri <fakeshell@bardia.tech>
+/**
+ * SPDX-License-Identifier: MIT
+ * Copyright (C) 2019 Josef Gajdusek
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
 #ifndef VIRTKEY_H
 #define VIRTKEY_H

@@ -1,6 +1,8 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2024 Jesus Higueras <jesus@furilabs.com>
-// Copyright (C) 2024 Bardia Moshiri <bardia@furilabs.com>
+/**
+ * SPDX-License-Identifier: MIT
+ * Copyright (C) 2025 Jesus Higueras <jesus@furilabs.com>
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
 #include <glib.h>
 #include <gio/gio.h>
