@@ -1,18 +1,20 @@
 /**
  * SPDX-License-Identifier: MIT
- * Copyright (C) 2025 Jesus Higueras <jesus@furilabs.com>
- * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ * Copyright (C) 2026 Jesus Higueras <jesus@furilabs.com>
+ * Copyright (C) 2026 Bardia Moshiri <bardia@furilabs.com>
  */
 
 #include <glib.h>
 #include <gio/gio.h>
 #include <stdio.h>
 #include <inttypes.h>
-#include <batman/wlrdisplay.h>
+#include <string.h>
 #include "virtkey.h"
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
+
+#include "logind.h"
 
 #ifdef G_LOG_DOMAIN
 #undef G_LOG_DOMAIN
@@ -27,11 +29,11 @@ typedef struct {
     gint32 wake_session_id;
     gint32 tilt_session_id;
     GMainLoop *main_loop;
-    gboolean previous_screen_on;
     GSettings *settings;
-    gchar *logind_session_id;
-    guint subscription_id;
+
     guint idle_source_id;
+
+    LogindMonitor *logind;
 } GestureSensors;
 
 static GestureSensors *g_app = NULL;
@@ -465,47 +467,6 @@ get_tilt_sensor_reading(GestureSensors *app)
     return tilt_detected;
 }
 
-static gchar*
-get_session_id(GestureSensors *app)
-{
-    g_autoptr(GVariant) result = NULL;
-    g_autoptr(GError) error = NULL;
-    gchar *session_id = NULL;
-
-    result = g_dbus_connection_call_sync(app->dbus_connection,
-                                         "org.freedesktop.login1",
-                                         "/org/freedesktop/login1",
-                                         "org.freedesktop.login1.Manager",
-                                         "ListSessions",
-                                         NULL,
-                                         G_VARIANT_TYPE("(a(susso))"),
-                                         G_DBUS_CALL_FLAGS_NONE,
-                                         -1,
-                                         NULL,
-                                         &error);
-
-    if (error) {
-        g_warning("Failed to list sessions: %s", error->message);
-        return NULL;
-    }
-
-    GVariantIter *iter;
-    gchar *id, *seat, *path;
-    guint32 user_id;
-    gchar *service;
-
-    g_variant_get(result, "(a(susso))", &iter);
-
-    while (g_variant_iter_loop(iter, "(susso)", &id, &user_id, &service, &seat, &path)) {
-        if (g_strcmp0(seat, "seat0") == 0 && !session_id)
-            session_id = g_strdup(id);
-    }
-
-    g_variant_iter_free(iter);
-
-    return session_id;
-}
-
 static void
 handle_wake_gesture(GestureSensors *app)
 {
@@ -566,10 +527,16 @@ check_sensors(gpointer user_data)
 {
     GestureSensors *app = (GestureSensors *)user_data;
 
-    int result = wlrdisplay(0, NULL);
-    gboolean current_screen_on = (result == 0);
+    LogindScreenState s = logind_monitor_get_screen_state(app->logind);
+
+    gboolean current_screen_on = TRUE;
+    if (s == LOGIND_SCREEN_OFF)
+        current_screen_on = FALSE;
+    else
+        current_screen_on = TRUE;
+
     if (current_screen_on) {
-        g_debug("Screen is on, stopping sensor checks");
+        g_debug("Screen is on (or unknown), stopping sensor checks");
         app->idle_source_id = 0;
         return G_SOURCE_REMOVE;
     }
@@ -591,85 +558,69 @@ check_sensors(gpointer user_data)
         return G_SOURCE_REMOVE;
     }
 
-    g_usleep(500000);
-
     return G_SOURCE_CONTINUE;
 }
 
 static void
-on_idle_hint_changed(GDBusConnection *connection,
-                     const gchar *sender_name,
-                     const gchar *object_path,
-                     const gchar *interface_name,
-                     const gchar *signal_name,
-                     GVariant *parameters,
-                     gpointer user_data)
+start_sensor_checks_if_needed(GestureSensors *app)
 {
-    GestureSensors *app = (GestureSensors *)user_data;
-    const gchar *property_interface;
-    g_autoptr(GVariant) changed_properties = NULL;
-    g_autoptr(GVariant) invalidated_properties = NULL;
+    if (!app)
+        return;
 
-    g_variant_get(parameters, "(&s@a{sv}@as)",
-                  &property_interface,
-                  &changed_properties,
-                  &invalidated_properties);
+    gboolean wake_enabled = g_settings_get_boolean(app->settings, "wake-sensor-enabled");
+    gboolean tilt_enabled = g_settings_get_boolean(app->settings, "tilt-sensor-enabled");
+    if (!wake_enabled && !tilt_enabled) {
+        g_debug("All sensors disabled, not starting checks");
+        return;
+    }
 
-    g_autoptr(GVariant) idle_variant = g_variant_lookup_value(changed_properties, "IdleHint", G_VARIANT_TYPE_BOOLEAN);
-    if (idle_variant) {
-        gboolean idle = g_variant_get_boolean(idle_variant);
-        g_debug("IdleHint changed: %d", idle);
+    if (app->idle_source_id != 0) {
+        g_debug("Sensor checks already running");
+        return;
+    }
 
-        gboolean wake_enabled = g_settings_get_boolean(app->settings, "wake-sensor-enabled");
-        gboolean tilt_enabled = g_settings_get_boolean(app->settings, "tilt-sensor-enabled");
+    g_debug("Screen OFF: (re)requesting sensors and starting checks");
 
-        if (idle && app->idle_source_id == 0 && (wake_enabled || tilt_enabled)) {
-            g_debug("Screen turned off, releasing and requesting sensors");
-            release_wake_sensor(app, app->wake_session_id);
-            release_tilt_sensor(app, app->tilt_session_id);
-            app->wake_session_id = request_wake_sensor(app);
-            app->tilt_session_id = request_tilt_sensor(app);
-            if (app->wake_session_id == -1 || app->tilt_session_id == -1) {
-                g_printerr("Failed to request new sensors after reset\n");
-                g_main_loop_quit(app->main_loop);
-                return;
-            }
+    if (app->wake_session_id != -1)
+        release_wake_sensor(app, app->wake_session_id);
+    if (app->tilt_session_id != -1)
+        release_tilt_sensor(app, app->tilt_session_id);
 
-            g_debug("System went idle, starting sensor checks");
-            app->idle_source_id = g_idle_add(check_sensors, app);
-        }
+    app->wake_session_id = request_wake_sensor(app);
+    app->tilt_session_id = request_tilt_sensor(app);
+    if (app->wake_session_id == -1 || app->tilt_session_id == -1) {
+        g_printerr("Failed to request sensors\n");
+        g_main_loop_quit(app->main_loop);
+        return;
+    }
+
+    app->idle_source_id = g_timeout_add(500, check_sensors, app);
+}
+
+static void
+stop_sensor_checks(GestureSensors *app)
+{
+    if (!app)
+        return;
+
+    if (app->idle_source_id != 0) {
+        g_debug("Screen ON: stopping sensor checks");
+        g_source_remove(app->idle_source_id);
+        app->idle_source_id = 0;
     }
 }
 
 static void
-subscribe_to_idle_hint(GestureSensors *app)
+on_logind_screen_changed(LogindScreenState state, void *user_data)
 {
-    g_autoptr(GError) error = NULL;
-    g_autofree gchar *session_path = NULL;
+    GestureSensors *app = (GestureSensors *)user_data;
 
-    while (!app->logind_session_id) {
-        app->logind_session_id = get_session_id(app);
-        if (!app->logind_session_id) {
-            g_warning("Failed to get session ID. Retrying...");
-            g_usleep(1000000);
-            continue;
-        }
+    if (state != LOGIND_SCREEN_OFF) {
+        stop_sensor_checks(app);
+        return;
     }
 
-    session_path = g_strdup_printf("/org/freedesktop/login1/session/%s", app->logind_session_id);
-
-    app->subscription_id = g_dbus_connection_signal_subscribe(app->dbus_connection,
-                                                              "org.freedesktop.login1",
-                                                              "org.freedesktop.DBus.Properties",
-                                                              "PropertiesChanged",
-                                                              session_path,
-                                                              NULL,
-                                                              G_DBUS_SIGNAL_FLAGS_NONE,
-                                                              on_idle_hint_changed,
-                                                              app,
-                                                              NULL);
-
-    g_debug("Listening for IdleHint changes on session %s", app->logind_session_id);
+    start_sensor_checks_if_needed(app);
 }
 
 static void
@@ -677,6 +628,9 @@ on_palm_rejection_changed(GSettings *settings,
                           const gchar *key,
                           gpointer user_data)
 {
+    (void)key;
+    (void)user_data;
+
     gboolean enabled = g_settings_get_boolean(settings, "palm-rejection-enabled");
     g_debug("Palm rejection %s", enabled ? "enabled" : "disabled");
     write_to_file(PALM_REJECTION_PATH, enabled ? "1" : "0");
@@ -685,8 +639,11 @@ on_palm_rejection_changed(GSettings *settings,
 static void
 on_glove_mode_changed(GSettings *settings,
                       const gchar *key,
-                       gpointer user_data)
+                      gpointer user_data)
 {
+    (void)key;
+    (void)user_data;
+
     gboolean enabled = g_settings_get_boolean(settings, "glove-mode-enabled");
     g_debug("Glove mode %s", enabled ? "enabled" : "disabled");
     write_to_file(GLOVE_MODE_PATH, enabled ? "1" : "0");
@@ -725,10 +682,7 @@ cleanup_and_exit(GestureSensors *app)
         g_source_remove(app->idle_source_id);
         app->idle_source_id = 0;
     }
-    if (app->subscription_id > 0) {
-        g_dbus_connection_signal_unsubscribe(app->dbus_connection, app->subscription_id);
-        app->subscription_id = 0;
-    }
+
     if (app->wake_session_id != -1) {
         release_wake_sensor(app, app->wake_session_id);
         app->wake_session_id = -1;
@@ -737,6 +691,12 @@ cleanup_and_exit(GestureSensors *app)
         release_tilt_sensor(app, app->tilt_session_id);
         app->tilt_session_id = -1;
     }
+
+    if (app->logind) {
+        logind_monitor_free(app->logind);
+        app->logind = NULL;
+    }
+
     if (app->dbus_connection) {
         g_dbus_connection_flush_sync(app->dbus_connection, NULL, NULL);
         g_object_unref(app->dbus_connection);
@@ -745,10 +705,6 @@ cleanup_and_exit(GestureSensors *app)
     if (app->settings) {
         g_object_unref(app->settings);
         app->settings = NULL;
-    }
-    if (app->logind_session_id) {
-        g_free(app->logind_session_id);
-        app->logind_session_id = NULL;
     }
     if (app->main_loop) {
         g_main_loop_quit(app->main_loop);
@@ -770,7 +726,7 @@ signal_handler(int signum)
 }
 
 int
-main(int argc, char *argv[])
+main(void)
 {
     GestureSensors app = {0};
     GError *error = NULL;
@@ -813,7 +769,7 @@ main(int argc, char *argv[])
         return 1;
     }
 
-    subscribe_to_idle_hint(&app);
+    app.logind = logind_monitor_new(on_logind_screen_changed, &app);
 
     app.main_loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(app.main_loop);

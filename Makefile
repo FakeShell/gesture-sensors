@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = `pkg-config --cflags glib-2.0 gio-2.0` -Iinclude
-LDFLAGS = `pkg-config --libs glib-2.0 gio-2.0` -lbatman-wrappers -lwayland-client -lxkbcommon
+LDFLAGS = `pkg-config --libs glib-2.0 gio-2.0` -lwayland-client -lxkbcommon
 
-SOURCES = src/gesture-sensors.c src/virtual-keyboard-unstable-v1-protocol.c src/virtkey.c
+SOURCES = src/gesture-sensors.c src/logind.c src/virtual-keyboard-unstable-v1-protocol.c src/virtkey.c
 
 TARGET = gesture-sensors
 
