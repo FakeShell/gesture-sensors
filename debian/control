@@ -6,6 +6,7 @@ Build-Depends: debhelper-compat (= 13),
                libglib2.0-dev,
                gcc,
                libxkbcommon-dev,
+               libwayland-dev,
 Standards-Version: 4.7.0
 Vcs-Browser: https://github.com/furilabs/gesture-sensors
 Vcs-Git: https://github.com/furilabs/gesture-sensors.git
